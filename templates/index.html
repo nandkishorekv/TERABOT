@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terrabot Control Panel</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a1a;
+      color: #f0f0f0;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background: #333;
+      padding: 20px;
+      text-align: center;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 2em;
+      color: #00bfff;
+    }
+    .container {
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .section {
+      margin-bottom: 30px;
+      background: #2a2a2a;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+    .section h2 {
+      margin-top: 0;
+      color: #00bfff;
+    }
+    .btn {
+      padding: 10px 20px;
+      margin: 5px;
+      font-size: 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .btn-mode {
+      background: #007bff;
+      color: #fff;
+    }
+    .btn-mode:hover {
+      background: #0056b3;
+    }
+    .btn-control {
+      background: #28a745;
+      color: #fff;
+    }
+    .btn-control:hover {
+      background: #1e7e34;
+    }
+    .btn-pan {
+      background: #ff9800;
+      color: #fff;
+    }
+    .btn-pan:hover {
+      background: #e68900;
+    }
+    .status {
+      font-size: 1.2em;
+      margin-top: 10px;
+      text-align: center;
+    }
+    .movement-display {
+      font-size: 1em;
+      text-align: center;
+      margin-top: 10px;
+    }
+    /* Responsive Layout */
+    @media (max-width: 600px) {
+      .btn {
+        width: 100%;
+        margin: 5px 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+ <h1>Terrabot Control Panel</h1>
+  </header>
+  <div class="container">
+    <!-- Mode Switching -->
+    <div class="section" id="modeSection">
+      <h2>Mode Selection</h2>
+      <button class="btn btn-mode" onclick="setMode('manual')">Manual Mode</button>
+      <button class="btn btn-mode" onclick="setMode('autonomous')">Autonomous Mode</button>
+      <p>Current Mode: <span id="modeDisplay">Manual</span></p>
+    </div>
+
+    <!-- Movement Control -->
+    <div class="section" id="movementSection">
+      <h2>Movement Control</h2>
+      <p>Use your keyboard arrow keys for movement control.</p>
+      <div class="movement-display" id="movementStatus">Status: Ready</div>
+    </div>
+
+    <!-- Pan-Tilt Control -->
+    <div class="section" id="panTiltSection">
+      <h2>Pan-Tilt Control</h2>
+      <p>Use the buttons below to control camera pan and tilt.</p>
+      <div style="display: flex; justify-content: center; align-items: center; flex-wrap: wrap;">
+        <button class="btn btn-pan" onclick="tiltUp()">Tilt Up &#9650;</button>
+      </div>
+      <div style="display: flex; justify-content: center; align-items: center;">
+        <button class="btn btn-pan" onclick="panLeft()">&#9664; Pan Left</button>
+        <button class="btn btn-pan" onclick="resetPanTilt()">Reset</button>
+        <button class="btn btn-pan" onclick="panRight()">Pan Right &#9654;</button>
+      </div>
+      <div style="display: flex; justify-content: center; align-items: center; flex-wrap: wrap;">
+        <button class="btn btn-pan" onclick="tiltDown()">Tilt Down &#9660;</button>
+      </div>
+      <p>Pan: <span id="panDisplay">90</span>°, Tilt: <span id="tiltDisplay">90</span>°</p>
+    </div>
+
+    <!-- Thermal Camera Stream -->
+    <div class="section" id="thermalSection">
+      <h2>Thermal Camera</h2>
+      <button class="btn btn-control" onclick="startThermalLive()">Start Thermal Stream</button>
+    </div>
+  </div>
+
+  <script>
+    let mode = "manual";
+    let movementStatus = document.getElementById("movementStatus");
+
+    // Mode Switching
+    function setMode(newMode) {
+      fetch("/set_mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: newMode })
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.mode) {
+            mode = data.mode;
+            document.getElementById("modeDisplay").innerText =
+              mode.charAt(0).toUpperCase() + mode.slice(1);
+            movementStatus.innerText = "Status: Switched to " + mode + " mode";
+          }
+        });
+    }
+ // Movement Control via Keyboard
+    let keysPressed = {};
+
+    window.addEventListener("keydown", function (event) {
+      if (mode !== "manual") return; // Only allow in manual mode
+      if (keysPressed[event.key]) return; // Already pressed
+
+      keysPressed[event.key] = true;
+      switch (event.key) {
+        case "ArrowUp":
+          sendMovement("forward");
+          movementStatus.innerText = "Moving Forward";
+          break;
+        case "ArrowDown":
+          sendMovement("backward");
+          movementStatus.innerText = "Moving Backward";
+          break;
+        case "ArrowLeft":
+          sendMovement("left");
+          movementStatus.innerText = "Turning Left";
+          break;
+        case "ArrowRight":
+          sendMovement("right");
+          movementStatus.innerText = "Turning Right";
+          break;
+      }
+    });
+
+    window.addEventListener("keyup", function (event) {
+      if (mode !== "manual") return;
+      delete keysPressed[event.key];
+      // When no arrow keys are pressed, stop movement
+      if (
+        !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].some(
+          (key) => keysPressed[key]
+        )
+      ) {
+        sendMovement("stop");
+        movementStatus.innerText = "Stopped";
+      }
+    });
+
+    function sendMovement(direction) {
+      fetch("/manual/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction: direction })
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            movementStatus.innerText = "Error: " + data.error;
+          } else if (data.status === "obstacle_detected") {
+            movementStatus.innerText = "Obstacle detected: " + data.action;
+          }
+        });
+    }
+
+    // Pan-Tilt Control via Buttons
+    let currentPan = 90;
+    let currentTilt = 90;
+
+    function updatePanTilt() {
+      document.getElementById("panDisplay").innerText = currentPan;
+      document.getElementById("tiltDisplay").innerText = currentTilt;
+      fetch("/pan_tilt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pan: currentPan, tilt: currentTilt })
+      });
+    }
+
+    function panLeft() {
+      currentPan = Math.min(180, currentPan + 10);
+      updatePanTilt();
+    }
+
+    function panRight() {
+      currentPan = Math.max(0, currentPan - 10);
+      updatePanTilt();
+    }
+
+    function tiltUp() {
+      currentTilt = Math.max(0, currentTilt - 10);
+      updatePanTilt();
+    }
+
+    function tiltDown() {
+      currentTilt = Math.min(180, currentTilt + 10);
+      updatePanTilt();
+    }
+
+    function resetPanTilt() {
+      currentPan = 90;
+      currentTilt = 90;
+      updatePanTilt();
+    }
+
+    // Thermal Camera Stream
+    function startThermalLive() {
+      fetch("http://10.42.0.143:5000/start_detection", { method: "POST" })
+        .then(response => response.json())
+        .then(data => {
+          if (data.status === "started") {
+            window.open("udp://10.42.0.143:1234", "_blank");
+          } else {
+            alert("Error starting detection!");
+          }
+        });
+    }
+  </script>
+</body>
+</html>
